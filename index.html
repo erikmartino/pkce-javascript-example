@@ -1,55 +1,67 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
+
+<head>
     <meta charset="utf-8">
     <title>Public Client Sample</title>
-  </head>
-  <body>
+</head>
+
+<body>
     <h1>Public Client Sample</h1>
     <button id="startButton">Start OAuth Flow</button>
     <div id="result"></div>
     <script>
-    const authorizeEndpoint = "https://idsvr:8443/oauth/v2/oauth-authorize";
-    const tokenEndpoint = "https://idsvr:8443/oauth/v2/oauth-token";
-        const clientId = "public-test-client";
+        const issuer = 'http://idp.byo.one/auth/realms/byoone'
+        const authorizeEndpoint = "http://idp.byo.one/auth/realms/byoone/protocol/openid-connect/auth";
+        const tokenEndpoint = "http://idp.byo.one/auth/realms/byoone/protocol/openid-connect/token";
+        const clientId = "byo.one";
 
         if (window.location.search) {
             var args = new URLSearchParams(window.location.search);
             var code = args.get("code");
 
             if (code) {
-                var xhr = new XMLHttpRequest();
-
-                xhr.onload = function() {
-                    var response = xhr.response;
-                    var message;
-
-                    if (xhr.status == 200) {
-                        message = "Access Token: " + response.access_token;
+                fetch(tokenEndpoint,
+                    {
+                        method: 'POST',
+                        headers: new Headers(
+                            {
+                                "Content-Type": "application/x-www-form-urlencoded",
+                                "Accept": "application/json"
+                            }
+                        ),
+                        body: new URLSearchParams({
+                            client_id: clientId,
+                            code_verifier: window.sessionStorage.getItem("code_verifier"),
+                            grant_type: "authorization_code",
+                            redirect_uri: location.href.replace(location.search, ''),
+                            code: code
+                        })
                     }
-                    else {
-                        message = "Error: " + response.error_description + " (" + response.error + ")";
-                    }
-
+                ).then(response => {
+                    response.json().then(t => {
+                        let message = `
+                            <ul>
+                                <li>access token: <a href="https://jwt.io?token=${t.access_token}">${t.access_token}</a></li>
+                                <li>refresh token:  <a href="https://jwt.io?token=${t.refresh_token}">${t.refresh_token}</a></li>
+                                <li>id token:  <a href="https://jwt.io?token=${t.id_token}">${t.id_token}</a></li>
+                            </ul>
+                        `;
+                        document.getElementById("result").innerHTML = message
+                    });
+                })
+                .catch(error => {
+                    let message = "Error: " + error;
                     document.getElementById("result").innerHTML = message;
-                };
-                xhr.responseType = 'json';
-                xhr.open("POST", tokenEndpoint, true);
-                xhr.setRequestHeader('Content-type', 'application/x-www-form-urlencoded');
-                xhr.send(new URLSearchParams({
-                    client_id: clientId,
-                    code_verifier: window.sessionStorage.getItem("code_verifier"),
-                    grant_type: "authorization_code",
-                    redirect_uri: location.href.replace(location.search, ''),
-                    code: code
-                }));
+                    location.search = null;
+                });
             }
         }
 
-        document.getElementById("startButton").onclick = function() {
+        document.getElementById("startButton").onclick = function () {
             var codeVerifier = generateRandomString(64);
 
-            generateCodeChallenge(codeVerifier).then(function(codeChallenge) {
+            generateCodeChallenge(codeVerifier).then(function (codeChallenge) {
                 window.sessionStorage.setItem("code_verifier", codeVerifier);
 
                 var redirectUri = window.location.href.split('?')[0];
@@ -58,9 +70,12 @@
                     client_id: clientId,
                     code_challenge_method: "S256",
                     code_challenge: codeChallenge,
-                    redirect_uri: redirectUri
+                    redirect_uri: redirectUri,
+                    scope: 'openid profile email',
+                    state: 'mystate',
+                    nonce: 'mynonce'
                 });
-                window.location = authorizeEndpoint + "/?" + args;
+                window.location = authorizeEndpoint + "?" + args;
             });
         }
 
@@ -83,5 +98,6 @@
             return text;
         }
     </script>
-  </body>
+</body>
+
 </html>
