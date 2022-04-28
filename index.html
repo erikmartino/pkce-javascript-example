@@ -10,11 +10,16 @@
     <h1>Public Client Sample</h1>
     <button id="startButton">Start OAuth Flow</button>
     <div id="result"></div>
-    <script>
+    <script type="module">
+        import { PKCE } from './pkce.js';
+
         const issuer = 'http://idp.byo.one/auth/realms/byoone'
-        const authorizeEndpoint = "http://idp.byo.one/auth/realms/byoone/protocol/openid-connect/auth";
-        const tokenEndpoint = "http://idp.byo.one/auth/realms/byoone/protocol/openid-connect/token";
         const clientId = "byo.one";
+
+        const pkce = new PKCE(issuer);
+        const openid_configuration = await pkce.fetch_openid_configuration();
+        const authorizationEndpoint = openid_configuration.authorization_endpoint;
+        const tokenEndpoint = openid_configuration.token_endpoint;
 
         if (window.location.search) {
             var args = new URLSearchParams(window.location.search);
@@ -75,7 +80,7 @@
                     state: 'mystate',
                     nonce: 'mynonce'
                 });
-                window.location = authorizeEndpoint + "?" + args;
+                window.location = authorizationEndpoint + "?" + args;
             });
         }
 
