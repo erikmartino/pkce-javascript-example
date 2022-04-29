@@ -20,6 +20,18 @@ export class PKCE {
     async authorize(redirectUri) {
         const codeVerifier = await this.generateRandomString(64);
         const codeChallenge = await this.generateCodeChallenge(codeVerifier);
+        const state = await this.generateRandomString(16);
+        const nonce = await this.generateRandomString(16);
+
+        const auth_verify = {}
+        auth_verify[state] = {
+            code_verifier: codeVerifier,
+            redirect_uri: redirectUri,
+            nonce: nonce
+        }
+
+        window.sessionStorage.setItem("auth_verify", JSON.stringify(auth_verify));
+
         window.sessionStorage.setItem("code_verifier", codeVerifier);
         window.sessionStorage.setItem("redirect_uri", redirectUri);
 
@@ -30,16 +42,29 @@ export class PKCE {
             code_challenge: codeChallenge,
             redirect_uri: redirectUri,
             scope: 'openid profile email',
-            state: 'mystate',
-            nonce: 'mynonce',
+            state: state,
+            nonce: nonce,
             response_mode: "fragment",
         });
         const conf = await this.fetch_openid_configuration()
         window.location = conf.authorization_endpoint + "?" + args;
     }
 
-    async auth_code_tokens(code) {
+    async logout() {
+        const conf = this.fetch_openid_configuration()
+    }
+
+    async auth_code_tokens(args) {
         const conf = await this.fetch_openid_configuration()
+        const code = args.code
+        const state = args.state
+        console.info("auth_verify", state, JSON.parse(window.sessionStorage.getItem("auth_verify")));
+        const auth_verify = JSON.parse(window.sessionStorage.getItem("auth_verify") || '{}')[state];
+
+        if (!auth_verify) {
+            throw "No matching authorization"
+        }
+
         return fetch(conf.token_endpoint, {
             method: 'POST',
             headers: new Headers(
@@ -50,9 +75,9 @@ export class PKCE {
             ),
             body: new URLSearchParams({
                 client_id: this.client_id,
-                code_verifier: window.sessionStorage.getItem("code_verifier"),
+                code_verifier: auth_verify.code_verifier,
                 grant_type: "authorization_code",
-                redirect_uri: window.sessionStorage.getItem('redirect_uri'),
+                redirect_uri: auth_verify.redirect_uri,
                 code: code
             })
         }
@@ -60,6 +85,16 @@ export class PKCE {
             .then(tokens => this.saveTokens(tokens));
     }
 
+    async handle_auth_fragment() {
+        const fragment = window.location.hash.substring(1)
+        const args = Object.fromEntries(new URLSearchParams(fragment));
+        const code = args.code
+        console.info("code:", code)
+        history.replaceState(null, null, ' ');
+        if (code) {
+            return this.auth_code_tokens(args)
+        }
+    }
 
     async token_refresh() {
         const conf = this.fetch_openid_configuration()
@@ -67,7 +102,7 @@ export class PKCE {
         const refresh_token = tokens?.refresh_token
 
         if (!refresh_token) {
-            console.warn("tokens",tokens)
+            console.warn("tokens", tokens)
             throw "Please authenticate, need a refresh_token"
         }
 
@@ -87,6 +122,27 @@ export class PKCE {
             })
         }).then(response => response.json())
             .then(tokens => this.saveTokens(tokens));
+    }
+
+    async end_session(post_logout_redirect_uri) {
+        const conf = await this.fetch_openid_configuration()
+        const tokens = await this.loadTokens();
+
+        const end_session_endpoint = conf.end_session_endpoint
+        const id_token_hint = tokens.id_token
+        const state = 'logout'
+
+        const end_session_parameters = new URLSearchParams({
+            post_logout_redirect_uri: post_logout_redirect_uri,
+            id_token_hint: id_token_hint,
+            client_id: this.client_id,
+            state: state,
+        })
+
+        const end_session = end_session_endpoint + "?" + end_session_parameters;
+        console.log("end_session", end_session)
+
+        window.location = end_session;
     }
 
     async saveTokens(tokens) {

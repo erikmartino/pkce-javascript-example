@@ -10,46 +10,56 @@
     <h1>PKCE sample</h1>
     <button id="authorizeButton">Start OAuth Flow</button>
     <button id="refreshButton">Refresh Tokens</button>
+    <button id="logoutButton">End Session</button>
     <div id="result"></div>
     <script type="module">
         import { PKCE } from './pkce.js';
         const pkce = new PKCE("http://idp.byo.one/auth/realms/byoone", "byo.one")
 
+        pkce.handle_auth_fragment().then(t => {
+            if (t) {
+                update_token_display(t);
+            } else {
+                document.getElementById("result").innerHTML = 'Unauthorized'
+            }
+        }).catch(error => {
+            update_error_message(error);
+        });
+
         function update_token_display(t) {
             console.info(t)
             let message = `
                     <ul>
-                        <li>access token: <a style="font-family: mono-spaced" href="https://jwt.io?token=${t.access_token}">${t.access_token}</a></li>
-                        <li>refresh token:  <a href="https://jwt.io?token=${t.refresh_token}">${t.refresh_token}</a></li>
-                        <li>id token:  <a href="https://jwt.io?token=${t.id_token}">${t.id_token}</a></li>
+                        <li>access token: <a target="jwt" style="font-family: mono-spaced" href="https://jwt.io?token=${t.access_token}">${t.access_token}</a></li>
+                        <li>refresh token:  <a target="jwt" href="https://jwt.io?token=${t.refresh_token}">${t.refresh_token}</a></li>
+                        <li>id token:  <a target="jwt" href="https://jwt.io?token=${t.id_token}">${t.id_token}</a></li>
                     </ul>
                 `;
             document.getElementById("result").innerHTML = message
         }
 
-
-        if (window.location.hash) {
-            var args = new URLSearchParams(window.location.hash);
-            var code = args.get("code");
-            if (code) {
-                history.replaceState(null, null, ' ');
-                pkce.auth_code_tokens(code).then(t => {
-                    update_token_display(t);
-                }).catch(error => {
-                    let message = "Error: " + error;
-                    document.getElementById("result").innerHTML = message;
-                    location.search = null;
-                });
-            }
+        function update_error_message(error) {
+            console.error("error", error)
+            let message = `<div>Error: ${error}</div>`;
+            document.getElementById("result").innerHTML = message
         }
+
 
         document.getElementById("authorizeButton").onclick = function () {
             pkce.authorize(window.location.href)
         }
 
         document.getElementById("refreshButton").onclick = function () {
-            pkce.token_refresh().then(t => update_token_display(t))
+            pkce.token_refresh().then(t => update_token_display(t)).catch(e => update_error_message(e))
         }
+
+        document.getElementById("logoutButton").onclick = function () {
+            const url = new URL(window.location.href) //(location.href);
+            url.hash = ''
+            url.search = ''
+            pkce.end_session(url)
+        }
+
     </script>
 </body>
 
