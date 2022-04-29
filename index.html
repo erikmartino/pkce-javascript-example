@@ -3,59 +3,39 @@
 
 <head>
     <meta charset="utf-8">
-    <title>Public Client Sample</title>
+    <title>PKCE authorization</title>
 </head>
 
 <body>
-    <h1>Public Client Sample</h1>
-    <button id="startButton">Start OAuth Flow</button>
+    <h1>PKCE sample</h1>
+    <button id="authorizeButton">Start OAuth Flow</button>
+    <button id="refreshButton">Refresh Tokens</button>
     <div id="result"></div>
     <script type="module">
         import { PKCE } from './pkce.js';
+        const pkce = new PKCE("http://idp.byo.one/auth/realms/byoone", "byo.one")
 
-        const issuer = 'http://idp.byo.one/auth/realms/byoone'
-        const clientId = "byo.one";
+        function update_token_display(t) {
+            console.info(t)
+            let message = `
+                    <ul>
+                        <li>access token: <a style="font-family: mono-spaced" href="https://jwt.io?token=${t.access_token}">${t.access_token}</a></li>
+                        <li>refresh token:  <a href="https://jwt.io?token=${t.refresh_token}">${t.refresh_token}</a></li>
+                        <li>id token:  <a href="https://jwt.io?token=${t.id_token}">${t.id_token}</a></li>
+                    </ul>
+                `;
+            document.getElementById("result").innerHTML = message
+        }
 
-        const pkce = new PKCE(issuer);
-        const openid_configuration = await pkce.fetch_openid_configuration();
-        const authorizationEndpoint = openid_configuration.authorization_endpoint;
-        const tokenEndpoint = openid_configuration.token_endpoint;
 
-        if (window.location.search) {
-            var args = new URLSearchParams(window.location.search);
+        if (window.location.hash) {
+            var args = new URLSearchParams(window.location.hash);
             var code = args.get("code");
-
             if (code) {
-                fetch(tokenEndpoint,
-                    {
-                        method: 'POST',
-                        headers: new Headers(
-                            {
-                                "Content-Type": "application/x-www-form-urlencoded",
-                                "Accept": "application/json"
-                            }
-                        ),
-                        body: new URLSearchParams({
-                            client_id: clientId,
-                            code_verifier: window.sessionStorage.getItem("code_verifier"),
-                            grant_type: "authorization_code",
-                            redirect_uri: location.href.replace(location.search, ''),
-                            code: code
-                        })
-                    }
-                ).then(response => {
-                    response.json().then(t => {
-                        let message = `
-                            <ul>
-                                <li>access token: <a href="https://jwt.io?token=${t.access_token}">${t.access_token}</a></li>
-                                <li>refresh token:  <a href="https://jwt.io?token=${t.refresh_token}">${t.refresh_token}</a></li>
-                                <li>id token:  <a href="https://jwt.io?token=${t.id_token}">${t.id_token}</a></li>
-                            </ul>
-                        `;
-                        document.getElementById("result").innerHTML = message
-                    });
-                })
-                .catch(error => {
+                history.replaceState(null, null, ' ');
+                pkce.auth_code_tokens(code).then(t => {
+                    update_token_display(t);
+                }).catch(error => {
                     let message = "Error: " + error;
                     document.getElementById("result").innerHTML = message;
                     location.search = null;
@@ -63,44 +43,12 @@
             }
         }
 
-        document.getElementById("startButton").onclick = function () {
-            var codeVerifier = generateRandomString(64);
-
-            generateCodeChallenge(codeVerifier).then(function (codeChallenge) {
-                window.sessionStorage.setItem("code_verifier", codeVerifier);
-
-                var redirectUri = window.location.href.split('?')[0];
-                var args = new URLSearchParams({
-                    response_type: "code",
-                    client_id: clientId,
-                    code_challenge_method: "S256",
-                    code_challenge: codeChallenge,
-                    redirect_uri: redirectUri,
-                    scope: 'openid profile email',
-                    state: 'mystate',
-                    nonce: 'mynonce'
-                });
-                window.location = authorizationEndpoint + "?" + args;
-            });
+        document.getElementById("authorizeButton").onclick = function () {
+            pkce.authorize(window.location.href)
         }
 
-        async function generateCodeChallenge(codeVerifier) {
-            var digest = await crypto.subtle.digest("SHA-256",
-                new TextEncoder().encode(codeVerifier));
-
-            return btoa(String.fromCharCode(...new Uint8Array(digest)))
-                .replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')
-        }
-
-        function generateRandomString(length) {
-            var text = "";
-            var possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-
-            for (var i = 0; i < length; i++) {
-                text += possible.charAt(Math.floor(Math.random() * possible.length));
-            }
-
-            return text;
+        document.getElementById("refreshButton").onclick = function () {
+            pkce.token_refresh().then(t => update_token_display(t))
         }
     </script>
 </body>
