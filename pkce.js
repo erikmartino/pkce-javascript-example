@@ -80,20 +80,37 @@ export class PKCE {
                 redirect_uri: auth_verify.redirect_uri,
                 code: code
             })
-        }
-        ).then(response => response.json())
+        }).then(response => response.json())
             .then(tokens => this.saveTokens(tokens));
     }
 
+    /**
+     * Handles auth code fragment response and end session state query parameter
+     * @returns 
+     */
     async handle_auth_fragment() {
         const fragment = window.location.hash.substring(1)
-        const args = Object.fromEntries(new URLSearchParams(fragment));
-        const code = args.code
-        console.info("code:", code)
         history.replaceState(null, null, ' ');
-        if (code) {
+
+        const args = Object.fromEntries(new URLSearchParams(fragment));
+        if (args.code) {
             return this.auth_code_tokens(args)
         }
+
+        const search = new URLSearchParams(window.location.search)
+        const query = Object.fromEntries(new URLSearchParams(window.location.search));
+        if (query.state) {
+            const end_session_state = JSON.parse(window.sessionStorage.getItem('end_session_state') || '{}') 
+            if (end_session_state[query.state]) {
+                search.delete('state')
+                window.location.search = `?${search.toString()}`
+            } else {
+                console.info('no matching session state')
+            }
+        }
+
+        const tokens = await this.loadTokens();
+        return tokens;
     }
 
     async token_refresh() {
@@ -130,7 +147,7 @@ export class PKCE {
 
         const end_session_endpoint = conf.end_session_endpoint
         const id_token_hint = tokens.id_token
-        const state = 'logout'
+        const state = await this.generateRandomString(16);
 
         const end_session_parameters = new URLSearchParams({
             post_logout_redirect_uri: post_logout_redirect_uri,
@@ -140,9 +157,35 @@ export class PKCE {
         })
 
         const end_session = end_session_endpoint + "?" + end_session_parameters;
-        console.log("end_session", end_session)
 
+        const end_session_state = {}
+        end_session_state[state] = end_session_parameters;
+
+        window.sessionStorage.setItem('end_session_state', JSON.stringify(end_session_state));
         window.location = end_session;
+    }
+
+    async userinfo() {
+        const conf = await this.fetch_openid_configuration()
+        const tokens = await this.loadTokens()
+
+        return fetch(conf.userinfo_endpoint, {
+            method: 'GET',
+            headers: new Headers(
+                {
+                    "Accept": "application/json",
+                    "Authorization": `Bearer ${tokens.access_token}`
+                }
+            )
+        }).then(response => response.json())
+    }
+
+    jwt_payload(jwt_token) {
+        return jwt_token ? JSON.parse(atob(jwt_token.split('.')[1])) : '';
+    }
+
+    jwt_prettify(jwt_token) {
+        return JSON.stringify(this.jwt_payload(jwt_token), null, 4)
     }
 
     async saveTokens(tokens) {
@@ -152,7 +195,7 @@ export class PKCE {
     }
 
     loadTokens() {
-        const item = window.sessionStorage.getItem('tokens') || {}
+        const item = window.sessionStorage.getItem('tokens') || '{}'
         const tokens = JSON.parse(item)
         return tokens
     }
@@ -162,6 +205,12 @@ export class PKCE {
             new TextEncoder().encode(codeVerifier));
 
         return btoa(String.fromCharCode(...new Uint8Array(digest)))
+            .replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')
+    }
+
+    async at_hash(token) {
+        const hash = await crypto.subtle.digest("SHA-256",new TextEncoder().encode(token));
+        return btoa(String.fromCharCode(...new Uint8Array(hash.slice(0,16))))
             .replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')
     }
 

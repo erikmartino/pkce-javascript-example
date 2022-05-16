@@ -11,7 +11,15 @@
     <button id="authorizeButton">Start OAuth Flow</button>
     <button id="refreshButton">Refresh Tokens</button>
     <button id="logoutButton">End Session</button>
+    <button id="userinfoButton">Userinfo</button>
     <div id="result"></div>
+    <style>
+        .token {
+            font-family: monospace;
+            overflow: hidden;
+            white-space: nowrap;
+        }
+    </style>
     <script type="module">
         import { PKCE } from './pkce.js';
         const pkce = new PKCE("http://idp.byo.one/auth/realms/byoone", "byo.one")
@@ -26,15 +34,22 @@
             update_error_message(error);
         });
 
-        function update_token_display(t) {
+        async function update_token_display(t) {
             console.info(t)
             let message = `
-                    <ul>
-                        <li>access token: <a target="jwt" style="font-family: mono-spaced" href="https://jwt.io?token=${t.access_token}">${t.access_token}</a></li>
-                        <li>refresh token:  <a target="jwt" href="https://jwt.io?token=${t.refresh_token}">${t.refresh_token}</a></li>
-                        <li>id token:  <a target="jwt" href="https://jwt.io?token=${t.id_token}">${t.id_token}</a></li>
-                    </ul>
-                `;
+            <h3>access token</h3>
+            <p class="token"><a target="jwt" href="https://jwt.io?token=${t.access_token}">${t.access_token}</a></p>
+            <pre>${pkce.jwt_prettify(t.access_token)}</pre>
+            <h3>refresh token</h3>
+            <p class="token"><a target="jwt" href="https://jwt.io?token=${t.refresh_token}">${t.refresh_token}</a></p>
+            <pre>${pkce.jwt_prettify(t.refresh_token)}</pre>
+            <h3>id token</h3>
+            <p class="token"><a target="jwt" href="https://jwt.io?token=${t.id_token}">${t.id_token}</a></p>
+            <pre>${pkce.jwt_prettify(t.id_token)}</pre>
+            <h2>Validation</h2>
+            <h3>at_hash</h3>
+            <p>at_hash(access_token): <code>${await pkce.at_hash(t.access_token)}</code>, id_token.at_hash: <code>${pkce.jwt_payload(t.id_token).at_hash}</code></p>
+            `
             document.getElementById("result").innerHTML = message
         }
 
@@ -55,11 +70,18 @@
 
         document.getElementById("logoutButton").onclick = function () {
             const url = new URL(window.location.href) //(location.href);
-            url.hash = ''
-            url.search = ''
             pkce.end_session(url)
         }
 
+        document.getElementById("userinfoButton").onclick = async function () {
+            const userinfo = await pkce.userinfo().catch(e => update_error_message(e));
+            const pretty = JSON.stringify(userinfo,null,4);
+            console.info("userinfo", pretty)
+            document.getElementById("result").innerHTML = `
+                <pre>${pretty}</pre>
+            `;
+            // .then(userinfo => console.info("userinfo", userinfo))
+        }
     </script>
 </body>
 
