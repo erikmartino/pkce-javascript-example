@@ -1,159 +1,46 @@
-# A Simple JavaScript PKCE Example
+# Getting Started with Create React App
 
-[![Quality](https://img.shields.io/badge/quality-demo-red)](https://curity.io/resources/code-examples/status/)
-[![Availability](https://img.shields.io/badge/availability-source-blue)](https://curity.io/resources/code-examples/status/)
+This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
-## Introduction
+## Available Scripts
 
-The OAuth Code Flow is one of the more typical and flexible token flows, and, with that, one of the most popular. The details of this flow are not covered by this article, but can be found in the [code flow overview](https://curity.io/resources/develop/oauth/oauth-code-flow/index.html) article on the Curity Web site.
+In the project directory, you can run:
 
-Proof Key for Code Exchange (PKCE) is a technique described in [RFC7636](https://tools.ietf.org/html/rfc7636), and is used to mitigate the risk of the authorization code being hijacked. More details on how to configure the Curity Identity Server to enable PKCE can be found in the [configuring PKCE in Curity](https://curity.io/resources/operate/tutorials/advanced/pkce/) resource page, and [further details on PKCE](https://curity.io/resources/architect/oauth/oauth-pkce/) can also be found on the same site.
+### `npm start`
 
-The rest of this writeup explains how these technologies can be used in the JavaScript programming language. It is intentionally simple, so that the concepts are not obscured by superfluous details.
+Runs the app in the development mode.\
+Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
 
-## Configuration
+The page will reload if you make edits.\
+You will also see any lint errors in the console.
 
-### Client
+### `npm test`
 
-The client -- the HTML page -- needs to be configured with the client ID. In this example, the ID is `public-test-client`. If certain scopes are desired, these should be configured as well.
+Launches the test runner in the interactive watch mode.\
+See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
 
-```JavaScript
-const clientId = "public-test-client";
-```
+### `npm run build`
 
-#### Creating the Verifier
+Builds the app for production to the `build` folder.\
+It correctly bundles React in production mode and optimizes the build for the best performance.
 
-This function generates a random string (the verifier) that is later signed before it is sent to the authorization server, to Curity.
+The build is minified and the filenames include the hashes.\
+Your app is ready to be deployed!
 
-```JavaScript
-function generateRandomString(length) {
-  var text = "";
-  var possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
 
-  for (var i = 0; i < length; i++) {
-    text += possible.charAt(Math.floor(Math.random() * possible.length));
-  }
+### `npm run eject`
 
-  return text;
-}
-```
+**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
 
-#### Signing the Verifier
+If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
 
-The Web crypto API is used to sign the verifier using SHA-256. This transformed version is called the code challenge.
+Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
 
-```JavaScript
-async function generateCodeChallenge(codeVerifier) {
-  var digest = await crypto.subtle.digest("SHA-256",
-    new TextEncoder().encode(codeVerifier));
+You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
 
-  return btoa(String.fromCharCode(...new Uint8Array(digest)))
-    .replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')
-}
-```
+## Learn More
 
-#### Storing the Verifier
+You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
 
-Store the verification key between requests (using session storage).
-
-```JavaScript
-window.sessionStorage.setItem("code_verifier", codeVerifier);
-```
-
-#### Sending the Code Challenge in the Authorization Request
-
-The code challenge (the transformed, temporary verification secret) is passed to the authorization server as part of the authorization request. The method (`S256`, in our case) used to transform the secret is also passed with the request.
-
-```JavaScript
-var redirectUri = window.location.href.split('?')[0];
-var args = new URLSearchParams({
-  response_type: "code",
-  client_id: clientId,
-  code_challenge_method: "S256",
-  code_challenge: codeChallenge,
-  redirect_uri: redirectUri
-});
-window.location = authorizeEndpoint + "/?" + args;
-```
-
-#### Call the Token Endpoint with the Code and Verifier
-
-The authorization code is passed in the POST request to the token endpoint along with the secret verifier key (retrieved from the session storage).
-
-```JavaScript
-xhr.responseType = 'json';
-xhr.open("POST", tokenEndpoint, true);
-xhr.setRequestHeader('Content-type', 'application/x-www-form-urlencoded');
-xhr.send(new URLSearchParams({
-  client_id: clientId,
-  code_verifier: window.sessionStorage.getItem("code_verifier"),
-  grant_type: "authorization_code",
-  redirect_uri: location.href.replace(location.search, ''),
-  code: code
-}));
-```
-
-### OAuth Server
-
-The OAuth server needs to be configured with a client that matches the one configured [above](#Client). Also, the redirect should be set. When using `npx` (described below), this will be `http://localhost:8080` by default if no port is provided. Additionally, scopes may be configured.
-
-This can be created in the Curity Identity Server by merging this XML with the current configuration:
-
-```xml
-<config xmlns="http://tail-f.com/ns/config/1.0">
-  <profiles xmlns="https://curity.se/ns/conf/base">
-  <profile>
-    <id>my-good-oauth-profile</id> <!-- Replace with the ID of your OAuth profile -->
-    <type xmlns:as="https://curity.se/ns/conf/profile/oauth">as:oauth-service</type>
-      <settings>
-      <authorization-server xmlns="https://curity.se/ns/conf/profile/oauth">
-      <client-store>
-      <config-backed>
-      <client>
-        <id>public-test-client</id>
-        <no-authentication>true</no-authentication>
-        <redirect-uris>http://localhost:8080/</redirect-uris> <!-- Update with your URL -->
-        <capabilities>
-          <code/>
-        </capabilities>      
-        <validate-port-on-loopback-interfaces>false</validate-port-on-loopback-interfaces>
-      </client>
-      </config-backed>
-      </client-store>
-      </authorization-server>
-      </settings>
-  </profile>
-  </profiles>
-</config>
-```
-
-## Serving the Sample HTML File
-
-The HTML needs to be served somehow from a Web server. Because the client is just a static HTML page, this can be done with a trivial server configuration. These are a couple of different ways to very easily server the static HTML page:
-
-```sh
-$ npx http-server -p <port>
-```
-
-```sh
-$ php -S <host>:<port>
-```
-
-```sh
-$ python -m SimpleHTTPServer <port>
-```
-
-These will not use TLS, but are fast and easy ways to serve the HTML file without setting up any infrastructure.
-
-## License
-
-The code and samples in this repository are licensed under the [Apache 2 license](LICENSE).
-
-## Questions
-
-For questions and comments, contact Curity AB:
-
-> info@curity.io
-> https://curity.io
-
-Copyright (C) 2020 Curity AB.
+To learn React, check out the [React documentation](https://reactjs.org/).
