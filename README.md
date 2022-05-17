@@ -1,6 +1,6 @@
-# Getting Started with Create React App
+# PKCE Client
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+This project implements [RFC-7636](https://datatracker.ietf.org/doc/html/rfc7636)
 
 ## Available Scripts
 
